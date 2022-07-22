@@ -1,9 +1,7 @@
 #include <vulkan/vulkan.h>
-#include <iostream>
 
-int main()
-{
-	VkApplicationInfo appInfo{};
+void vk_init(){
+    VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pApplicationName = "Scratch";
 	appInfo.pEngineName = "Scratchine";
@@ -15,9 +13,4 @@ int main()
 	VkInstance instance;
 
 	VkResult result = vkCreateInstance(&instanceInfo, 0, &instance);
-	if (result == VK_SUCCESS){
-		std::cout << "Succesfullly created vulkan instance" << std::endl;
-	}
-
-	return 0;
 }
