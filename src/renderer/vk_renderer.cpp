@@ -281,7 +281,9 @@ bool vk_render(VkContext* vkcontext)
 	presentInfo.waitSemaphoreCount = 1;
 	VK_CHECK(vkQueuePresentKHR(vkcontext->graphicsQueue, &presentInfo))
 	
-	VK_CHECK(vkDeviceWaitIdle(vkcontext->device));
+	// VK_CHECK(vkDeviceWaitIdle(vkcontext->device));
 
 	vkFreeCommandBuffers(vkcontext->device, vkcontext->commandPool, allocInfo.commandBufferCount, &cmd);
+
+	return true;
 }
