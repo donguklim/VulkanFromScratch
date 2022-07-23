@@ -140,6 +140,7 @@ bool vk_init(VkContext* vkcontext,  void* window){
 	{
 		float queuePriority = 1.0f;
 		VkDeviceQueueCreateInfo queueInfo{};
+		queueInfo.sType= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		queueInfo.queueFamilyIndex = vkcontext->graphicsIndex;
 		queueInfo.queueCount = 1;
 		queueInfo.pQueuePriorities = &queuePriority;
