@@ -31,11 +31,15 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
 struct VkContext
 {
 	VkInstance instance;
+	VkDebugUtilsMessengerEXT debugMessenger;
 	VkSurfaceKHR surface;
+	VkSurfaceFormatKHR surfaceFormat;
 	VkPhysicalDevice gpu;
 	VkDevice device;
 	VkSwapchainKHR swapchain;
-	VkDebugUtilsMessengerEXT debugMessenger;
+
+	uint32_t scImgCount;
+	VkImage scImages[5];
 
 	int graphicsIndex;
 };
@@ -161,6 +165,23 @@ bool vk_init(VkContext* vkcontext,  void* window){
 
 	// Swapchain
 	{
+		uint32_t formatCount = 0;
+		VkSurfaceFormatKHR surfaceFormats[10];
+		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(vkcontext->gpu, vkcontext->surface, &formatCount, nullptr));
+		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(vkcontext->gpu, vkcontext->surface, &formatCount, surfaceFormats));
+
+		for (uint32_t i = 0; i < formatCount; i++)
+		{
+			VkSurfaceFormatKHR format = surfaceFormats[i];
+
+			if(format.format == VK_FORMAT_B8G8R8A8_SRGB)
+			{
+				vkcontext->surfaceFormat = format;
+				break;
+			}
+		}
+
+
 		VkSurfaceCapabilitiesKHR surfaceCaps{};
 		VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkcontext->gpu, vkcontext->surface, &surfaceCaps));
 		uint32_t imgCount = surfaceCaps.minImageCount + 1;
@@ -169,12 +190,17 @@ bool vk_init(VkContext* vkcontext,  void* window){
 		VkSwapchainCreateInfoKHR scInfo{};
 		scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 		scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 		scInfo.surface = vkcontext->surface;
+		scInfo.imageFormat = vkcontext->surfaceFormat.format;
 		scInfo.preTransform = surfaceCaps.currentTransform;
 		scInfo.imageExtent = surfaceCaps.currentExtent;
 		scInfo.minImageCount = imgCount;
+		scInfo.imageArrayLayers = 1;
 		
 		VK_CHECK(vkCreateSwapchainKHR(vkcontext->device, &scInfo, nullptr, &vkcontext->swapchain));
+		VK_CHECK(vkGetSwapchainImagesKHR(vkcontext->device, vkcontext->swapchain, &vkcontext->scImgCount, nullptr));
+		VK_CHECK(vkGetSwapchainImagesKHR(vkcontext->device, vkcontext->swapchain, &vkcontext->scImgCount, vkcontext->scImages));
 	}
 
 	return true;
