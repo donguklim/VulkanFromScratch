@@ -20,9 +20,9 @@ LRESULT CALLBACK platform_window_callback(HWND window, UINT msg, WPARAM wParam, 
     return DefWindowProc(window, msg, wParam, lParam);
 }
 
-bool platform_create_window(HWND window)
+bool platform_create_window(HWND *window)
 {
-    HINSTANCE instance = GetModuleHandle(0);
+    HINSTANCE instance = GetModuleHandle(nullptr);
 
     WNDCLASSW wc = {};
     wc.lpfnWndProc = platform_window_callback;
@@ -32,24 +32,24 @@ bool platform_create_window(HWND window)
 
     if (!RegisterClass(&wc))
     {
-        MessageBox(window, L"Failed registering window class", L"Error", MB_ICONEXCLAMATION | MB_OK);
+        MessageBox(nullptr, L"Failed registering window class", L"Error", MB_ICONEXCLAMATION | MB_OK);
         return false;
     }
 
-    window = CreateWindowEx(
+    *window = CreateWindowEx(
         WS_EX_APPWINDOW,
         L"vulkan_engine_class",
         L"Scratch 짜잔",
         WS_THICKFRAME | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPED,
-        100, 100, 1600, 720, 0, 0, instance, 0);
+        100, 100, 1600, 720, 0, 0, instance, nullptr);
 
-    if (window == 0)
+    if (window == nullptr)
     {
-        MessageBox(window, L"Failed creating window", L"Error", MB_ICONEXCLAMATION | MB_OK);
+        MessageBox(nullptr, L"Failed creating window", L"Error", MB_ICONEXCLAMATION | MB_OK);
         return false;
     }
 
-    ShowWindow(window, SW_SHOW);
+    ShowWindow(*window, SW_SHOW);
     return true;
 }
 
@@ -67,12 +67,12 @@ int main()
 {
     VkContext vkcontext{};
     HWND window = 0;
-    if (!platform_create_window(window))
+    if (!platform_create_window(&window))
     {
         return -1;
     }
 
-    if(!vk_init(&vkcontext)){
+    if(!vk_init(&vkcontext, &window)){
         return -1;
     }
 
