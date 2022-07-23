@@ -4,6 +4,7 @@
 
 
 #include <windows.h>
+#include "renderer/vk_renderer.cpp"
 
 static bool running = true;
 
@@ -52,19 +53,33 @@ bool platform_create_window(HWND window)
     return true;
 }
 
+void plaform_update_window(HWND window)
+{
+    MSG msg;
+    while(PeekMessage(&msg, window, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+}
+
 int main()
 {
-    
+    VkContext vkcontext{};
     HWND window = 0;
     if (!platform_create_window(window))
     {
         return -1;
     }
 
+    if(!vk_init(&vkcontext)){
+        return -1;
+    }
+
 
     while (running)
     {
-
+        plaform_update_window(window);
     }
 
     return 0;
