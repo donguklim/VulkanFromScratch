@@ -41,6 +41,7 @@ struct VkContext
 	VkQueue graphicsQueue;
 	VkSwapchainKHR swapchain;
 	VkRenderPass renderpass;
+	VkPipeline pipeline;
 	VkCommandPool commandPool;
 
 	VkSemaphore submitSemaphore;
@@ -281,6 +282,76 @@ bool vk_init(VkContext* vkcontext,  void* window)
 			VK_CHECK(vkCreateFramebuffer(vkcontext->device, &fbInfo, nullptr, &vkcontext->framebuffers[i]));
 		}
 		
+	}
+
+	// Pipeline
+	{
+		VkShaderModule vertexShader, fragmentShader;
+
+		uint32_t sizeInBytes;
+		char* code{nullptr};
+		VkShaderModuleCreateInfo shaderInfo{};
+		shaderInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+
+		code = platform_read_file(L"assets/shaders/shader.vert.spv", &sizeInBytes);
+		shaderInfo.pCode = reinterpret_cast<uint32_t*>(code);
+		shaderInfo.codeSize = sizeInBytes;
+		VK_CHECK(vkCreateShaderModule(vkcontext->device, &shaderInfo, nullptr, &vertexShader));
+		// TODO: Suballocation from main allocation
+		delete code;
+
+		code = platform_read_file(L"assets/shaders/shader.frag.spv", &sizeInBytes);
+		shaderInfo.pCode = reinterpret_cast<uint32_t*>(code);
+		shaderInfo.codeSize = sizeInBytes;
+		VK_CHECK(vkCreateShaderModule(vkcontext->device, &shaderInfo, nullptr, &fragmentShader));
+		// TODO: Suballocation from main allocation
+		delete code;
+
+		VkPipelineShaderStageCreateInfo vertexStage{};
+		vertexStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		vertexStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+		vertexStage.pName = "main";
+		vertexStage.module = vertexShader;
+
+		VkPipelineShaderStageCreateInfo fragStage{};
+		fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		fragStage.pName = "main";
+		fragStage.module = fragmentShader;
+
+		VkPipelineShaderStageCreateInfo shaderStages[] = {
+			vertexStage,
+			fragStage
+		};
+
+		VkPipelineVertexInputStateCreateInfo vertexInputState{};
+		vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+		VkPipelineColorBlendAttachmentState colorAttachment{};
+		colorAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		colorAttachment.blendEnable = VK_FALSE;
+
+
+		VkPipelineColorBlendStateCreateInfo colorBlendState{};
+		colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+		colorBlendState.pAttachments = &colorAttachment;
+		colorBlendState.attachmentCount = 1;
+
+		VkPipelineRasterizationStateCreateInfo rasterizationState{};
+		rasterizationState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+		rasterizationState.frontFace = VK_FRONT_FACE_CLOCKWISE;
+		rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
+		raster
+
+		VkGraphicsPipelineCreateInfo pipeInfo{};
+		pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		pipeInfo.pVertexInputState = &vertexInputState;
+		pipeInfo.pColorBlendState = &colorBlendState;
+		pipeInfo.pStages = shaderStages;
+		pipeInfo.stageCount = std::size(shaderStages);
+		pipeInfo.pRasterizationState = &rasterizationState;
+
+		vkCreateGraphicsPipelines(vkcontext->device, nullptr, 1, &pipeInfo, nullptr, &vkcontext->pipeline);
 	}
 
 	// Command Pool

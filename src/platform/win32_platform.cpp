@@ -102,3 +102,41 @@ void platform_get_window_size(uint32_t* width, uint32_t* height)
     *width = rect.right - rect.left;
     *height = rect.bottom - rect.top;
 }
+
+char* platform_read_file(LPCWSTR path, uint32_t* length)
+{
+    char* result = nullptr;
+
+    HANDLE file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if(file != INVALID_HANDLE_VALUE)
+    {
+        LARGE_INTEGER size;
+        if (GetFileSizeEx(file, &size))
+        {
+            *length = static_cast<uint32_t>(size.QuadPart);
+            result = new char[*length];
+
+            DWORD bytesRead;
+            if (ReadFile(file, result, *length, &bytesRead, nullptr))
+            {
+                // Success
+            }
+            else 
+            {
+                std::cout << "Failed reading file" << std::endl;
+            }
+        }
+        else
+        {
+            std::cout << "Failed getting size of file" << std::endl;    
+        }
+
+        CloseHandle(file);
+    }
+    else
+    {
+        std::cout << "Failed opening file" << std::endl;
+    }
+
+    return result;
+}
