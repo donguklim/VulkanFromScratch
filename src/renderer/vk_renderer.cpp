@@ -13,7 +13,7 @@
 #define VK_CHECK(result)										\
 	if(result != VK_SUCCESS) 									\
 	{															\
-		std::cout << "Vulkan Errlr: " << result << std::endl;	\
+		std::cout << "Vulkan Error: " << result << std::endl;	\
 		__debugbreak();											\
 		return false;											\
 	}															\
@@ -87,11 +87,11 @@ bool vk_init(VkContext* vkcontext,  void* window){
 	// Create Surface
 	{
 #ifdef WINDOWS_BUILD
-	VkWin32SurfaceCreateInfoKHR surfaceInfo{};
-	surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-	surfaceInfo.hwnd = (HWND)window;
-	surfaceInfo.hinstance = GetModuleHandleA(0);
-	VK_CHECK(vkCreateWin32SurfaceKHR(vkcontext->instance, &surfaceInfo, nullptr, &vkcontext->surface));
+		VkWin32SurfaceCreateInfoKHR surfaceInfo{};
+		surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+		surfaceInfo.hwnd = static_cast<HWND>(window);
+		surfaceInfo.hinstance = GetModuleHandle(nullptr);
+		VK_CHECK(vkCreateWin32SurfaceKHR(vkcontext->instance, &surfaceInfo, nullptr, &vkcontext->surface));
 #elif LINUX_BUILD
 #endif
 	}
@@ -161,11 +161,20 @@ bool vk_init(VkContext* vkcontext,  void* window){
 
 	// Swapchain
 	{
+		VkSurfaceCapabilitiesKHR surfaceCaps{};
+		//VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkcontext->gpu, vkcontext->surface, &surfaceCaps));
+		uint32_t imgCount = surfaceCaps.minImageCount + 1;
+		imgCount = imgCount > surfaceCaps.maxImageCount ? imgCount - 1 : imgCount;
+
 		VkSwapchainCreateInfoKHR scInfo{};
 		scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 		scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		scInfo.surface = vkcontext->surface;
-		vkCreateSwapchainKHR(vkcontext->device, &scInfo, nullptr, &vkcontext->swapchain);
+		//scInfo.preTransform = surfaceCaps.currentTransform;
+		//scInfo.imageExtent = surfaceCaps.currentExtent;
+		//scInfo.minImageCount = imgCount;
+		
+		VK_CHECK(vkCreateSwapchainKHR(vkcontext->device, &scInfo, nullptr, &vkcontext->swapchain));
 	}
 
 	return true;
