@@ -162,7 +162,7 @@ bool vk_init(VkContext* vkcontext,  void* window){
 	// Swapchain
 	{
 		VkSurfaceCapabilitiesKHR surfaceCaps{};
-		//VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkcontext->gpu, vkcontext->surface, &surfaceCaps));
+		VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkcontext->gpu, vkcontext->surface, &surfaceCaps));
 		uint32_t imgCount = surfaceCaps.minImageCount + 1;
 		imgCount = imgCount > surfaceCaps.maxImageCount ? imgCount - 1 : imgCount;
 
@@ -170,9 +170,9 @@ bool vk_init(VkContext* vkcontext,  void* window){
 		scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 		scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		scInfo.surface = vkcontext->surface;
-		//scInfo.preTransform = surfaceCaps.currentTransform;
-		//scInfo.imageExtent = surfaceCaps.currentExtent;
-		//scInfo.minImageCount = imgCount;
+		scInfo.preTransform = surfaceCaps.currentTransform;
+		scInfo.imageExtent = surfaceCaps.currentExtent;
+		scInfo.minImageCount = imgCount;
 		
 		VK_CHECK(vkCreateSwapchainKHR(vkcontext->device, &scInfo, nullptr, &vkcontext->swapchain));
 	}

@@ -1,7 +1,6 @@
 #ifndef UNICODE
 #define UNICODE
-#endif 
-
+#endif
 
 #include <windows.h>
 #include "renderer/vk_renderer.cpp"
@@ -24,7 +23,7 @@ bool platform_create_window(HWND *window)
 {
     HINSTANCE instance = GetModuleHandle(nullptr);
 
-    WNDCLASSW wc = {};
+    WNDCLASS wc{};
     wc.lpfnWndProc = platform_window_callback;
     wc.hInstance = instance;
     wc.lpszClassName = L"vulkan_engine_class";
@@ -50,13 +49,15 @@ bool platform_create_window(HWND *window)
     }
 
     ShowWindow(*window, SW_SHOW);
+
     return true;
 }
 
-void plaform_update_window(HWND window)
+void platform_update_window(HWND window)
 {
     MSG msg;
-    while(PeekMessage(&msg, window, 0, 0, PM_REMOVE))
+
+    while (PeekMessage(&msg, window, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -65,21 +66,23 @@ void plaform_update_window(HWND window)
 
 int main()
 {
-    VkContext vkcontext{};
-    HWND window = 0;
+    VkContext vkcontext = {};
+
+    HWND window = nullptr;
     if (!platform_create_window(&window))
     {
         return -1;
     }
 
-    if(!vk_init(&vkcontext, &window)){
+    if (!vk_init(&vkcontext, window))
+    {
         return -1;
     }
 
-
     while (running)
     {
-        plaform_update_window(window);
+        platform_update_window(window);
+
     }
 
     return 0;
