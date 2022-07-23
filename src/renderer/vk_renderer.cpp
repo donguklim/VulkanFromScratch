@@ -40,6 +40,9 @@ struct VkContext
 	VkSwapchainKHR swapchain;
 	VkCommandPool commandPool;
 
+	VkSemaphore submitSemaphore;
+	VkSemaphore acquireSemaphore;
+
 	uint32_t scImgCount;
 	VkImage scImages[5];
 
@@ -215,13 +218,21 @@ bool vk_init(VkContext* vkcontext,  void* window){
 		vkCreateCommandPool(vkcontext->device, &poolInfo, nullptr, &vkcontext->commandPool);
 	}
 
+	// Sync Objects
+	{
+		VkSemaphoreCreateInfo semaInfo{};
+		semaInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->acquireSemaphore));
+		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->submitSemaphore));
+	}
+
 	return true;
 }
 
 bool vk_render(VkContext* vkcontext)
 {
 	uint32_t imgIndex;
-	VK_CHECK(vkAcquireNextImageKHR(vkcontext->device, vkcontext->swapchain, 0, nullptr, nullptr, &imgIndex));
+	VK_CHECK(vkAcquireNextImageKHR(vkcontext->device, vkcontext->swapchain, 0, vkcontext->acquireSemaphore, nullptr, &imgIndex));
 
 	VkCommandBuffer cmd;
 	VkCommandBufferAllocateInfo allocInfo{};
@@ -241,16 +252,26 @@ bool vk_render(VkContext* vkcontext)
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
+	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pWaitDstStageMask = &waitStage;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
+	submitInfo.pSignalSemaphores = &vkcontext->submitSemaphore;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &vkcontext->acquireSemaphore;
+	submitInfo.waitSemaphoreCount = 1;
 	VK_CHECK(vkQueueSubmit(vkcontext->graphicsQueue, 1, &submitInfo, nullptr));
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.pSwapchains = &vkcontext->swapchain;
 	presentInfo.swapchainCount = 1;
 	presentInfo.pImageIndices = &imgIndex;
+	presentInfo.pWaitSemaphores = &vkcontext->submitSemaphore;
+	presentInfo.waitSemaphoreCount = 1;
 	VK_CHECK(vkQueuePresentKHR(vkcontext->graphicsQueue, &presentInfo))
 	
 	VK_CHECK(vkDeviceWaitIdle(vkcontext->device));

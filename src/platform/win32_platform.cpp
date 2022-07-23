@@ -82,7 +82,9 @@ int main()
     while (running)
     {
         platform_update_window(window);
-        vk_render(&vkcontext);
+        if (!vk_render(&vkcontext)){
+            return -1;
+        }
 
     }
 
