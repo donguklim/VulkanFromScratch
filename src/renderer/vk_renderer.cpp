@@ -36,7 +36,9 @@ struct VkContext
 	VkSurfaceFormatKHR surfaceFormat;
 	VkPhysicalDevice gpu;
 	VkDevice device;
+	VkQueue graphicsQueue;
 	VkSwapchainKHR swapchain;
+	VkCommandPool commandPool;
 
 	uint32_t scImgCount;
 	VkImage scImages[5];
@@ -161,6 +163,8 @@ bool vk_init(VkContext* vkcontext,  void* window){
 		deviceInfo.enabledExtensionCount = std::size(extensions);
 	
 		VK_CHECK(vkCreateDevice(vkcontext->gpu, &deviceInfo, nullptr, &vkcontext->device));
+
+		vkGetDeviceQueue(vkcontext->device, vkcontext->graphicsIndex, 0, &vkcontext->graphicsQueue);
 	}
 
 	// Swapchain
@@ -203,5 +207,53 @@ bool vk_init(VkContext* vkcontext,  void* window){
 		VK_CHECK(vkGetSwapchainImagesKHR(vkcontext->device, vkcontext->swapchain, &vkcontext->scImgCount, vkcontext->scImages));
 	}
 
+	// Command Pool
+	{
+		VkCommandPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		poolInfo.queueFamilyIndex = vkcontext->graphicsIndex;
+		vkCreateCommandPool(vkcontext->device, &poolInfo, nullptr, &vkcontext->commandPool);
+	}
+
 	return true;
+}
+
+bool vk_render(VkContext* vkcontext)
+{
+	uint32_t imgIndex;
+	VK_CHECK(vkAcquireNextImageKHR(vkcontext->device, vkcontext->swapchain, 0, nullptr, nullptr, &imgIndex));
+
+	VkCommandBuffer cmd;
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandBufferCount = 1;
+	allocInfo.commandPool = vkcontext->commandPool;
+	VK_CHECK(vkAllocateCommandBuffers(vkcontext->device, &allocInfo, &cmd));
+	
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	VK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
+
+	// Rendering Commands
+	{
+	}
+
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &cmd;
+	VK_CHECK(vkQueueSubmit(vkcontext->graphicsQueue, 1, &submitInfo, nullptr));
+
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pImageIndices = &imgIndex;
+	VK_CHECK(vkQueuePresentKHR(vkcontext->graphicsQueue, &presentInfo))
+	
+	VK_CHECK(vkDeviceWaitIdle(vkcontext->device));
+
+	vkFreeCommandBuffers(vkcontext->device, vkcontext->commandPool, allocInfo.commandBufferCount, &cmd);
 }
