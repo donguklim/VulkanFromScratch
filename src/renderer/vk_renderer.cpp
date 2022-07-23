@@ -9,6 +9,7 @@
 #endif
 #include <iostream>
 #include <iterator>
+#include "vk_init.cpp"
 
 #define VK_CHECK(result)										\
 	if(result != VK_SUCCESS) 									\
@@ -89,7 +90,8 @@ bool vk_init(VkContext* vkcontext,  void* window){
 		debugInfo.pfnUserCallback = vk_debug_callback;
 		vkCreateDebugUtilsMessengerEXT(vkcontext->instance, &debugInfo, nullptr, &vkcontext->debugMessenger);
 	}
-	else {
+	else 
+	{
 		return false;
 	}
 
@@ -241,9 +243,7 @@ bool vk_render(VkContext* vkcontext)
 	allocInfo.commandPool = vkcontext->commandPool;
 	VK_CHECK(vkAllocateCommandBuffers(vkcontext->device, &allocInfo, &cmd));
 	
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	VkCommandBufferBeginInfo beginInfo = cmd_begin_info();
 	VK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
 
 	// Rendering Commands
