@@ -32,17 +32,23 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
 struct VkContext
 {
 	VkExtent2D screenSize;
+
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
 	VkSurfaceKHR surface;
 	VkSurfaceFormatKHR surfaceFormat;
+
 	VkPhysicalDevice gpu;
 	VkDevice device;
 	VkQueue graphicsQueue;
+
 	VkSwapchainKHR swapchain;
 	VkRenderPass renderpass;
-	VkPipeline pipeline;
 	VkCommandPool commandPool;
+
+	VkPipelineLayout pipeLayout;
+	VkPipeline pipeline;
+
 
 	VkSemaphore submitSemaphore;
 	VkSemaphore acquireSemaphore;
@@ -284,6 +290,13 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		
 	}
 
+	//Pipeline Layout
+	{
+		VkPipelineLayoutCreateInfo layoutInfo{};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		VK_CHECK(vkCreatePipelineLayout(vkcontext->device, &layoutInfo, nullptr, &vkcontext->pipeLayout));
+	}
+
 	// Pipeline
 	{
 		VkShaderModule vertexShader, fragmentShader;
@@ -341,17 +354,51 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		rasterizationState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 		rasterizationState.frontFace = VK_FRONT_FACE_CLOCKWISE;
 		rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
-		raster
+		rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
+		rasterizationState.lineWidth = 1.0f;
+
+		VkPipelineMultisampleStateCreateInfo multisampleState{};
+		multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+		multisampleState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+		VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+		VkRect2D scissors{};
+		VkViewport viewport{};
+
+		VkPipelineViewportStateCreateInfo viewportState{};
+		viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		viewportState.scissorCount = 1;
+		viewportState.pScissors = &scissors;
+		viewportState.viewportCount = 1;
+		viewportState.pViewports = &viewport;
+
+		VkDynamicState dynamicStates[] = {
+			VK_DYNAMIC_STATE_VIEWPORT,
+			VK_DYNAMIC_STATE_SCISSOR
+		};
+		VkPipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+		dynamicState.pDynamicStates = dynamicStates;
+		dynamicState.dynamicStateCount = std::size(dynamicStates);
 
 		VkGraphicsPipelineCreateInfo pipeInfo{};
 		pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		pipeInfo.layout = vkcontext->pipeLayout;
+		pipeInfo.renderPass = vkcontext->renderpass;
 		pipeInfo.pVertexInputState = &vertexInputState;
 		pipeInfo.pColorBlendState = &colorBlendState;
 		pipeInfo.pStages = shaderStages;
 		pipeInfo.stageCount = std::size(shaderStages);
 		pipeInfo.pRasterizationState = &rasterizationState;
+		pipeInfo.pViewportState = &viewportState;
+		pipeInfo.pDynamicState= &dynamicState;
+		pipeInfo.pMultisampleState = &multisampleState;
+		pipeInfo.pInputAssemblyState = &inputAssembly;
 
-		vkCreateGraphicsPipelines(vkcontext->device, nullptr, 1, &pipeInfo, nullptr, &vkcontext->pipeline);
+		VK_CHECK(vkCreateGraphicsPipelines(vkcontext->device, nullptr, 1, &pipeInfo, nullptr, &vkcontext->pipeline));
 	}
 
 	// Command Pool
