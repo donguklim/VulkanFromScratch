@@ -248,6 +248,13 @@ bool vk_render(VkContext* vkcontext)
 
 	// Rendering Commands
 	{
+		VkClearColorValue color{1, 0, 1, 1};
+		VkImageSubresourceRange range{};
+		range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		range.layerCount = 1;
+		range.levelCount = 1;
+		
+		vkCmdClearColorImage(cmd, vkcontext->scImages[imgIndex], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, &color, 1, &range);
 	}
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
