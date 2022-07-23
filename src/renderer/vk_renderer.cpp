@@ -450,6 +450,19 @@ bool vk_render(VkContext* vkcontext)
 
 	// Rendering Commands
 	{
+		VkRect2D scissor{};
+		scissor.extent = vkcontext->screenSize;
+
+		VkViewport viewport{};
+		viewport.height = vkcontext->screenSize.height;
+		viewport.width = vkcontext->screenSize.width;
+		viewport.maxDepth = 1.0f;
+
+		vkCmdSetScissor(cmd, 0, 1, &scissor);
+		vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vkcontext->pipeline);
+		vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	}
 	vkCmdEndRenderPass(cmd);
