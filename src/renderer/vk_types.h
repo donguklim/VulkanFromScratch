@@ -6,3 +6,9 @@ struct Image{
     VkImage image;
     VkDeviceMemory memory;
 };
+
+struct Buffer{
+    VkBuffer buffer;
+    VkDeviceMemory memory;
+    void* data;
+};

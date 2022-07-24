@@ -50,9 +50,14 @@ struct VkContext
 	VkSwapchainKHR swapchain;
 	VkRenderPass renderpass;
 	VkCommandPool commandPool;
+	VkCommandBuffer cmd;
 
+	// todo: will be inside an array
 	Image image;
 
+	Buffer stagingBuffer;
+
+	VkDescriptorSetLayout setLayout;
 	VkPipelineLayout pipeLayout;
 	VkPipeline pipeline;
 
@@ -296,10 +301,27 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		
 	}
 
+	// Create Descriptor Set Layouts
+	{
+		VkDescriptorSetLayoutBinding binding{};
+		binding.binding = 0;
+		binding.descriptorCount = 1;
+		binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		VkDescriptorSetLayoutCreateInfo layoutInfo{};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &binding;
+		VK_CHECK(vkCreateDescriptorSetLayout(vkcontext->device, &layoutInfo, nullptr, &vkcontext->setLayout));
+	}
+
 	//Pipeline Layout
 	{
 		VkPipelineLayoutCreateInfo layoutInfo{};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		layoutInfo.setLayoutCount = 1;
+		layoutInfo.pSetLayouts = &vkcontext->setLayout;
 		VK_CHECK(vkCreatePipelineLayout(vkcontext->device, &layoutInfo, nullptr, &vkcontext->pipeLayout));
 	}
 
@@ -414,6 +436,11 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		poolInfo.queueFamilyIndex = vkcontext->graphicsIndex;
 		VK_CHECK(vkCreateCommandPool(vkcontext->device, &poolInfo, nullptr, &vkcontext->commandPool));
 	}
+	// Command Buffer
+	{
+		VkCommandBufferAllocateInfo allocInfo = cmd_alloc_info(vkcontext->commandPool);
+		VK_CHECK(vkAllocateCommandBuffers(vkcontext->device, &allocInfo, &vkcontext->cmd));
+	}
 
 	// Sync Objects
 	{
@@ -423,10 +450,46 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->submitSemaphore));
 	}
 
+	// Staging Buffer
+	{
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		bufferInfo.size = MB(1);
+		VK_CHECK(vkCreateBuffer(vkcontext->device, &bufferInfo, nullptr, &vkcontext->stagingBuffer.buffer));
+
+		
+		VkMemoryRequirements memRequirements{};
+		vkGetBufferMemoryRequirements(vkcontext->device, vkcontext->stagingBuffer.buffer, &memRequirements);
+
+		VkPhysicalDeviceMemoryProperties gpuMemProps{};
+		vkGetPhysicalDeviceMemoryProperties(vkcontext->gpu, &gpuMemProps);
+
+		VkMemoryAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = MB(1);
+		for(uint32_t i = 0; i< gpuMemProps.memoryTypeCount; i++)
+		{
+			if (memRequirements.memoryTypeBits & (1 << i) && 
+				(gpuMemProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+			{
+				allocInfo.memoryTypeIndex = i;
+			}
+		}
+
+		VK_CHECK(vkAllocateMemory(vkcontext->device, &allocInfo, nullptr, &vkcontext->stagingBuffer.memory));
+		VK_CHECK(vkMapMemory(vkcontext->device, vkcontext->stagingBuffer.memory, 0, MB(1), 0, &vkcontext->stagingBuffer.data));
+		VK_CHECK(vkBindBufferMemory(vkcontext->device, vkcontext->stagingBuffer.buffer, vkcontext->stagingBuffer.memory, 0));
+	}
+
 	// Create Image
 	{
 		uint32_t fileSize;
 		DDSFile* texture_data = reinterpret_cast<DDSFile*>(platform_read_file(L"assets/textures/kyaru.dds", &fileSize));
+		uint32_t textureSize = texture_data->header.width * texture_data->header.height * 4;
+
+		memcpy(vkcontext->stagingBuffer.data, &texture_data->dataBegin, textureSize);
 
 		// todo assertion
 
@@ -459,10 +522,28 @@ bool vk_init(VkContext* vkcontext,  void* window)
 			}
 		}
 
-		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-		allocInfo.allocationSize = texture_data->header.width * texture_data->header.height * 4;
-		
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = textureSize;
 		VK_CHECK(vkAllocateMemory(vkcontext->device, &allocInfo, nullptr, &vkcontext->image.memory));
+		VK_CHECK(vkBindImageMemory(vkcontext->device, vkcontext->image.image, vkcontext->image.memory, 0));
+
+		VkCommandBuffer cmd;
+		VkCommandBufferAllocateInfo cmdAlloc = cmd_alloc_info(vkcontext->commandPool);
+		VK_CHECK(vkAllocateCommandBuffers(vkcontext->device, &cmdAlloc, &cmd));
+		
+
+		VkCommandBufferBeginInfo beginInfo = cmd_begin_info();
+		VK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
+
+		VkBufferImageCopy copyRegion{};
+		copyRegion.imageExtent = {texture_data->header.width, texture_data->header.height, 1};
+		copyRegion.imageSubresource.layerCount = 1;
+		copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		vkCmdCopyBufferToImage(cmd, vkcontext->stagingBuffer.buffer, vkcontext->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+		VK_CHECK(vkEndCommandBuffer(cmd));
+
+		vkDeviceWaitIdle(vkcontext->device);
 
 	}
 
