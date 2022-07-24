@@ -9,7 +9,10 @@
 #endif
 #include <iostream>
 #include <iterator>
+
+#include "platform.h"
 #include "vk_init.cpp"
+#include "dds_structs.h"
 
 #define VK_CHECK(result)										\
 	if(result != VK_SUCCESS) 									\
@@ -48,6 +51,7 @@ struct VkContext
 
 	VkPipelineLayout pipeLayout;
 	VkPipeline pipeline;
+	VkImage image;
 
 
 	VkSemaphore submitSemaphore;
@@ -415,6 +419,28 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		semaInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->acquireSemaphore));
 		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->submitSemaphore));
+	}
+
+	// Create Image
+	{
+		uint32_t fileSize;
+		DDSFile* texture_data = reinterpret_cast<DDSFile*>(platform_read_file(L"assets/textures/kyaru.dds", &fileSize));
+
+		// todo assertion
+
+		VkImageCreateInfo imgInfo{};
+		imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imgInfo.mipLevels = 1;
+		imgInfo.arrayLayers = 1;
+		imgInfo.imageType = VK_IMAGE_TYPE_2D;
+		imgInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		imgInfo.extent = {texture_data->header.width, texture_data->header.width, 1};
+		imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		// imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		VK_CHECK(vkCreateImage(vkcontext->device, &imgInfo, nullptr, &vkcontext->image));
+
 	}
 
 	return true;
