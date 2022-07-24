@@ -19,3 +19,22 @@ VkCommandBufferAllocateInfo cmd_alloc_info(VkCommandPool pool)
 	
     return allocInfo;
 }
+
+VkFenceCreateInfo fence_info(VkFenceCreateFlags flags = 0)
+{
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = flags;
+
+    return fenceInfo;
+}
+
+VkSubmitInfo submit_info(VkCommandBuffer* cmd, uint32_t cmdCount = 1)
+{
+    VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = cmdCount;
+	submitInfo.pCommandBuffers = cmd;
+	
+    return submitInfo;
+}

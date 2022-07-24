@@ -57,12 +57,17 @@ struct VkContext
 
 	Buffer stagingBuffer;
 
+	VkDescriptorPool descPool;
+
+	VkSampler sampler;
+	VkDescriptorSet descSet;
 	VkDescriptorSetLayout setLayout;
 	VkPipelineLayout pipeLayout;
 	VkPipeline pipeline;
 
 	VkSemaphore submitSemaphore;
 	VkSemaphore acquireSemaphore;
+	VkFence imgAvailableFence;
 
 	uint32_t scImgCount;
 	VkImage scImages[5];
@@ -448,6 +453,9 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		semaInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->acquireSemaphore));
 		VK_CHECK(vkCreateSemaphore(vkcontext->device, &semaInfo, nullptr, &vkcontext->submitSemaphore));
+
+		auto fenceInfo = fence_info(VK_FENCE_CREATE_SIGNALED_BIT);
+		VK_CHECK(vkCreateFence(vkcontext->device, &fenceInfo, nullptr, &vkcontext->imgAvailableFence));
 	}
 
 	// Staging Buffer
@@ -472,7 +480,7 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		{
 			if (memRequirements.memoryTypeBits & (1 << i) && 
 				(gpuMemProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+				(VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
 			{
 				allocInfo.memoryTypeIndex = i;
 			}
@@ -535,16 +543,121 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		VkCommandBufferBeginInfo beginInfo = cmd_begin_info();
 		VK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
 
+		VkImageSubresourceRange range{};
+		range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		range.layerCount = 1;
+		range.levelCount = 1;
+
+		// Transition Layout to Transfer optimal
+		VkImageMemoryBarrier imgMemBarrier{};
+		imgMemBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imgMemBarrier.image = vkcontext->image.image;
+		imgMemBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imgMemBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imgMemBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imgMemBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imgMemBarrier.subresourceRange = range;
+
+		vkCmdPipelineBarrier(
+			cmd, 
+			VK_PIPELINE_STAGE_TRANSFER_BIT, 
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0, 0, nullptr, 0, nullptr, 1, &imgMemBarrier
+		);
+		
+
 		VkBufferImageCopy copyRegion{};
 		copyRegion.imageExtent = {texture_data->header.width, texture_data->header.height, 1};
 		copyRegion.imageSubresource.layerCount = 1;
 		copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		vkCmdCopyBufferToImage(cmd, vkcontext->stagingBuffer.buffer, vkcontext->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
+		imgMemBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imgMemBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imgMemBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imgMemBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(
+			cmd, 
+			VK_PIPELINE_STAGE_TRANSFER_BIT, 
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0, 0, nullptr, 0, nullptr, 1, &imgMemBarrier
+		);
+		
 		VK_CHECK(vkEndCommandBuffer(cmd));
 
-		vkDeviceWaitIdle(vkcontext->device);
+		VkFence uploadFence;
+		VkFenceCreateInfo fenceInfo = fence_info();
+		VK_CHECK(vkCreateFence(vkcontext->device, &fenceInfo, nullptr, &uploadFence));
 
+		VkSubmitInfo submitInfo = submit_info(&cmd);
+		VK_CHECK(vkQueueSubmit(vkcontext->graphicsQueue, 1, &submitInfo, uploadFence));
+
+		VK_CHECK(vkWaitForFences(vkcontext->device, 1, &uploadFence, true, UINT64_MAX));
+	}
+
+	// Create Image View
+	{
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = vkcontext->image.image;
+		viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.layerCount = 1;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		VK_CHECK(vkCreateImageView(vkcontext->device, &viewInfo, nullptr, &vkcontext->image.view));
+	}
+
+	// Create Sampler
+	{
+		VkSamplerCreateInfo samplerInfo{};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.minFilter = VK_FILTER_NEAREST;
+		samplerInfo.magFilter = VK_FILTER_NEAREST;
+
+		VK_CHECK(vkCreateSampler(vkcontext->device, &samplerInfo, nullptr, &vkcontext->sampler));
+	}
+
+	// Create Descriptor Pool
+	{
+		VkDescriptorPoolSize poolSize{};
+		poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSize.descriptorCount = 1;
+
+		VkDescriptorPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.maxSets = 1;
+		poolInfo.poolSizeCount = 1;
+		poolInfo.pPoolSizes = &poolSize;
+		VK_CHECK(vkCreateDescriptorPool(vkcontext->device, &poolInfo, nullptr, &vkcontext->descPool));
+	}
+
+	// Create Descriptor Set
+	{
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.pSetLayouts = &vkcontext->setLayout;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.descriptorPool = vkcontext->descPool; 
+		VK_CHECK(vkAllocateDescriptorSets(vkcontext->device, &allocInfo, &vkcontext->descSet));
+	}
+
+	// Update Descriptor Set
+	{
+		VkDescriptorImageInfo imgInfo{};
+		imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imgInfo.imageView = vkcontext->image.view;
+		imgInfo.sampler = vkcontext->sampler;
+
+		VkWriteDescriptorSet write{};
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = vkcontext->descSet;
+		write.pImageInfo = &imgInfo;
+		write.dstBinding = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		vkUpdateDescriptorSets(vkcontext->device, 1, &write, 0, nullptr);
 	}
 
 	return true;
@@ -588,11 +701,14 @@ bool vk_render(VkContext* vkcontext)
 		viewport.width = vkcontext->screenSize.width;
 		viewport.maxDepth = 1.0f;
 
-		vkCmdSetScissor(cmd, 0, 1, &scissor);
 		vkCmdSetViewport(cmd, 0, 1, &viewport);
+		vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vkcontext->pipeLayout, 0, 1, &vkcontext->descSet, 0, nullptr);
+		
 
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vkcontext->pipeline);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
+		vkCmdDraw(cmd, 6, 1, 0, 0);
 
 	}
 	vkCmdEndRenderPass(cmd);
@@ -601,11 +717,8 @@ bool vk_render(VkContext* vkcontext)
 
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	VkSubmitInfo submitInfo = submit_info(&cmd);
 	submitInfo.pWaitDstStageMask = &waitStage;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cmd;
 	submitInfo.pSignalSemaphores = &vkcontext->submitSemaphore;
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &vkcontext->acquireSemaphore;
