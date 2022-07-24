@@ -11,8 +11,10 @@
 #include <iterator>
 
 #include "platform.h"
-#include "vk_init.cpp"
 #include "dds_structs.h"
+
+#include "vk_types.h"
+#include "vk_init.cpp"
 
 #define VK_CHECK(result)										\
 	if(result != VK_SUCCESS) 									\
@@ -49,10 +51,10 @@ struct VkContext
 	VkRenderPass renderpass;
 	VkCommandPool commandPool;
 
+	Image image;
+
 	VkPipelineLayout pipeLayout;
 	VkPipeline pipeline;
-	VkImage image;
-
 
 	VkSemaphore submitSemaphore;
 	VkSemaphore acquireSemaphore;
@@ -439,7 +441,28 @@ bool vk_init(VkContext* vkcontext,  void* window)
 		imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		// imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		VK_CHECK(vkCreateImage(vkcontext->device, &imgInfo, nullptr, &vkcontext->image));
+		VK_CHECK(vkCreateImage(vkcontext->device, &imgInfo, nullptr, &vkcontext->image.image));
+
+		VkMemoryRequirements memRequirements{};
+		vkGetImageMemoryRequirements(vkcontext->device, vkcontext->image.image, &memRequirements);
+
+		VkPhysicalDeviceMemoryProperties gpuMemProps{};
+		vkGetPhysicalDeviceMemoryProperties(vkcontext->gpu, &gpuMemProps);
+
+		VkMemoryAllocateInfo allocInfo{};
+		for(uint32_t i = 0; i< gpuMemProps.memoryTypeCount; i++)
+		{
+			if (memRequirements.memoryTypeBits & (1 << i) && 
+				(gpuMemProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+			{
+				allocInfo.memoryTypeIndex = i;
+			}
+		}
+
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+		allocInfo.allocationSize = texture_data->header.width * texture_data->header.height * 4;
+		
+		VK_CHECK(vkAllocateMemory(vkcontext->device, &allocInfo, nullptr, &vkcontext->image.memory));
 
 	}
 
